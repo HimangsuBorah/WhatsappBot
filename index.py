@@ -17,7 +17,7 @@ twilio_client = Client(
 )
 
 # Initialize Hugging Face settings
-API_URL = "https://api-inference.huggingface.co/models/Kolors-Virtual-Try-On"
+API_URL = "https://huggingface.co/spaces/Kwai-Kolors/Kolors-Virtual-Try-On"
 headers = {"Authorization": f"Bearer {os.getenv('HUGGINGFACE_TOKEN')}"}
 
 # Store user sessions in memory (for demo purposes)
