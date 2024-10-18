@@ -1,15 +1,9 @@
+# api/index.py
 from flask import Flask, request, send_file
 from twilio.rest import Client
-import requests
 import os
 from dotenv import load_dotenv
-import io
-import time
-from PIL import Image
-import logging
-import redis
-from rq import Queue
-import huggingface_hub
+import requests
 
 # Load environment variables
 load_dotenv()
@@ -22,14 +16,13 @@ twilio_client = Client(
     os.getenv('TWILIO_AUTH_TOKEN')
 )
 
-# Initialize Redis for job queue
-redis_conn = redis.Redis()
-job_queue = Queue(connection=redis_conn)
-
-# Initialize Hugging Face client
-hf_token = os.getenv('HUGGINGFACE_TOKEN')
+# Initialize Hugging Face settings
 API_URL = "https://api-inference.huggingface.co/models/Kolors-Virtual-Try-On"
-headers = {"Authorization": f"Bearer {hf_token}"}
+headers = {"Authorization": f"Bearer {os.getenv('HUGGINGFACE_TOKEN')}"}
+
+# Store user sessions in memory (for demo purposes)
+# In production, use a proper database
+user_sessions = {}
 
 class UserSession:
     def __init__(self):
@@ -40,25 +33,12 @@ class UserSession:
         self.person_image = None
         self.garment_image = None
 
-# Store user sessions
-user_sessions = {}
-
-def process_virtual_tryon(person_image, garment_image):
-    """Process the virtual try-on request using Hugging Face API"""
-    try:
-        payload = {
-            "person_image": person_image,
-            "garment_image": garment_image
-        }
-        response = requests.post(API_URL, headers=headers, json=payload)
-        return response.content
-    except Exception as e:
-        logging.error(f"Error in virtual try-on processing: {str(e)}")
-        return None
+@app.route('/')
+def home():
+    return 'Virtual Try-On Bot is running!'
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """Handle incoming WhatsApp messages"""
     try:
         # Get message details
         message = request.form.get('Body', '')
@@ -78,13 +58,19 @@ def webhook():
             else:
                 user_sessions[sender].garment_image = media_url
                 # Process virtual try-on
-                job = job_queue.enqueue(process_virtual_tryon,
-                                     user_sessions[sender].person_image,
-                                     user_sessions[sender].garment_image)
-                send_whatsapp_message(sender, "Processing your virtual try-on request... Please wait.")
-                
-                # Reset session
-                user_sessions[sender].reset()
+                try:
+                    result = process_virtual_tryon(
+                        user_sessions[sender].person_image,
+                        user_sessions[sender].garment_image
+                    )
+                    if result:
+                        send_whatsapp_message(sender, "Here's your virtual try-on result!")
+                    else:
+                        send_whatsapp_message(sender, "Sorry, there was an error processing your request.")
+                except Exception as e:
+                    send_whatsapp_message(sender, f"Error: {str(e)}")
+                finally:
+                    user_sessions[sender].reset()
         else:
             if message.lower() == 'start':
                 send_whatsapp_message(sender, "Welcome to Virtual Try-On! Please send me your full-body photo.")
@@ -93,8 +79,21 @@ def webhook():
                 
         return 'OK'
     except Exception as e:
-        logging.error(f"Error in webhook: {str(e)}")
+        print(f"Error in webhook: {str(e)}")
         return 'Error', 500
+
+def process_virtual_tryon(person_image, garment_image):
+    """Process the virtual try-on request using Hugging Face API"""
+    try:
+        payload = {
+            "person_image": person_image,
+            "garment_image": garment_image
+        }
+        response = requests.post(API_URL, headers=headers, json=payload)
+        return response.content
+    except Exception as e:
+        print(f"Error in virtual try-on processing: {str(e)}")
+        return None
 
 def send_whatsapp_message(to, message):
     """Send WhatsApp message using Twilio"""
@@ -105,7 +104,7 @@ def send_whatsapp_message(to, message):
             to=to
         )
     except Exception as e:
-        logging.error(f"Error sending WhatsApp message: {str(e)}")
+        print(f"Error sending WhatsApp message: {str(e)}")
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()
