@@ -4,7 +4,7 @@ from twilio.rest import Client
 import os
 from dotenv import load_dotenv
 import requests
-from urllib.parse import quote as url_quote
+
 
 # Load environment variables
 load_dotenv()
